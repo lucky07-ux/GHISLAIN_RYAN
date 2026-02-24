@@ -1,0 +1,22 @@
+{
+  "customerInfo": {
+    "name": "Test User",
+    "phone": "+237123456789",
+    "email": "test@example.com"
+  },
+  "deliveryInfo": {
+    "type": "campus",
+    "address": "Test Address"
+  },
+  "items": [
+    {
+      "menuItemId": "507f1f77bcf86cd799439011",
+      "quantity": 1
+    }
+  ],
+  "payment": {
+    "method": "orange_money",
+    "status": "pending"
+  },
+  "specialInstructions": "Test order for NotchPay integration"
+}
