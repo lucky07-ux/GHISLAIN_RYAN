@@ -23,7 +23,7 @@ export default function ProductCard({ item, showDay = true }: ProductCardProps) 
     toast.success(`${item.name} ajouté au panier!`);
   };
 
-  const backendBaseUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+  const backendBaseUrl = (import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000');
 
   return (
     <div className="bg-[#1A1A1A] border border-[#34D399]/20 rounded-xl overflow-hidden hover:border-[#34D399]/50 transition group">

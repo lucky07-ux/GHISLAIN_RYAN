@@ -1,49 +1,67 @@
 import { Request, Response } from 'express';
 import { User } from '../models/User.js';
+import { Vendor } from '../models/Vendor.js';
+import { Customer } from '../models/Customer.js';
 import { generateToken } from '../utils/helpers.js';
 import { AppError } from '../middlewares/errorHandler.js';
 
 /**
- * POST /api/admin/login
- * Authentifie un administrateur
+ * POST /api/auth/login
+ * Authentifie un utilisateur selon son rôle (admin, vendor ou user)
  */
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const { email, phone, password, role } = req.body;
 
-    // Validation
-    if (!email || !password) {
-      throw new AppError('Email et mot de passe requis', 400);
+    if (!password || !role) {
+      throw new AppError('Role et mot de passe requis', 400);
     }
 
-    // Rechercher l'utilisateur
-    const user = await User.findOne({ email }).select('+password');
-    if (!user) {
+    let record: any;
+    switch (role) {
+      case 'admin':
+      case 'super_admin':
+        if (!email) throw new AppError('Email requis', 400);
+        record = await User.findOne({ email }).select('+password');
+        break;
+      case 'vendor':
+        if (!email) throw new AppError('Email requis', 400);
+        record = await Vendor.findOne({ email }).select('+password');
+        break;
+      case 'user':
+        if (!phone) throw new AppError('Téléphone requis', 400);
+        record = await Customer.findOne({ phone }).select('+password');
+        break;
+      default:
+        throw new AppError('Role invalide', 400);
+    }
+
+    if (!record) {
       throw new AppError('Identifiants invalides', 401);
     }
 
-    // Vérifier le mot de passe
-    const isPasswordValid = await user.comparePassword(password);
+    const isPasswordValid = await record.comparePassword(password);
     if (!isPasswordValid) {
       throw new AppError('Identifiants invalides', 401);
     }
 
-    // Mettre à jour lastLogin
-    user.lastLogin = new Date();
-    await user.save();
+    if (record.role === 'admin' || record.role === 'super_admin') {
+      record.lastLogin = new Date();
+      await record.save();
+    }
 
-    // Générer le token
-    const token = generateToken(user._id!.toString(), user.email, user.role);
+    const token = generateToken(record._id!.toString(), record.email || record.phone, record.role);
 
     res.json({
       success: true,
       message: 'Connexion réussie',
       token,
       user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
+        id: record._id,
+        email: record.email,
+        phone: record.phone,
+        name: record.name || record.email || record.phone,
+        role: record.role,
       },
     });
   } catch (error) {
@@ -72,7 +90,22 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
       throw new AppError('Utilisateur non authentifié', 401);
     }
 
-    const user = await User.findById(req.user.id);
+    let user: any;
+    switch (req.user.role) {
+      case 'admin':
+      case 'super_admin':
+        user = await User.findById(req.user.id);
+        break;
+      case 'vendor':
+        user = await Vendor.findById(req.user.id);
+        break;
+      case 'user':
+        user = await Customer.findById(req.user.id);
+        break;
+      default:
+        throw new AppError('Rôle inconnu', 400);
+    }
+
     if (!user) {
       throw new AppError('Utilisateur introuvable', 404);
     }
@@ -82,7 +115,8 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
       user: {
         id: user._id,
         email: user.email,
-        name: user.name,
+        phone: user.phone,
+        name: user.name || user.email || user.phone,
         role: user.role,
       },
     });

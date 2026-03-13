@@ -387,7 +387,85 @@ Modifie les paramètres
 
 ---
 
-## 🔴 Codes d'Erreur
+## � Protected Routes (User/Customer)
+
+### Wallet & Cashback
+
+#### GET /admin/customers/wallet
+Récupère le solde du portefeuille cash back du client
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "balance": 5000,
+  "currency": "XAF"
+}
+```
+
+#### GET /admin/customers/cashback-history
+Récupère l'historique complet des transactions de cashback
+
+**Query Parameters:**
+- `page`: Numéro de page (défaut: 1)
+- `limit`: Nombre d'éléments par page (défaut: 10)
+
+**Response:**
+```json
+{
+  "success": true,
+  "history": [
+    {
+      "date": "2026-01-20T14:30:00Z",
+      "amount": 250,
+      "type": "earned",
+      "orderId": "507f1f77bcf86cd799439011",
+      "description": "Cashback sur commande ORD-1234"
+    },
+    {
+      "date": "2026-01-19T10:15:00Z",
+      "amount": 500,
+      "type": "used",
+      "orderId": "507f1f77bcf86cd799439012",
+      "description": "Réduction appliquée à la commande ORD-5678"
+    }
+  ],
+  "total": {
+    "earned": 2500,
+    "used": 500,
+    "balance": 2000
+  }
+}
+```
+
+#### POST /admin/customers/use-cashback
+Utilise une partie du cashback sur une commande
+
+**Request Body:**
+```json
+{
+  "orderId": "507f1f77bcf86cd799439011",
+  "amount": 500
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Cashback utilisé avec succès",
+  "newBalance": 1500
+}
+```
+
+---
+
+## �🔴 Codes d'Erreur
 
 | Code | Message | Cause |
 |------|---------|-------|
@@ -421,13 +499,18 @@ curl -X POST http://localhost:5000/api/orders \
       "name": "Jean Kouam",
       "phone": "+237691710289"
     },
+    "deliveryInfo": {
+      "type": "campus",
+      "address": "Plateau, Douala"
+    },
     "items": [{
       "menuItemId": "507f1f77bcf86cd799439011",
       "name": "Poulet DG",
       "price": 2500,
       "quantity": 1
     }],
-    "payment": {"method": "cash"}
+    "payment": {"method": "cash"},
+    "walletCashbackUsed": 500
   }'
 ```
 

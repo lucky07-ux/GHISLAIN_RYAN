@@ -8,18 +8,18 @@ import {
   updateMenuItemStock,
   upload,
 } from '../controllers/menuController.js';
-import { authenticate, authorize } from '../middlewares/auth.js';
+import { authenticate, authorize, optionalAuthenticate, checkVendorSubscription } from '../middlewares/auth.js';
 
 const router = Router();
 
-// Public routes
-router.get('/current', getCurrentMenu);
-router.get('/:day', getMenuByDay);
+// Public routes (parse token if provided to permit vendor filtering)
+router.get('/current', optionalAuthenticate, getCurrentMenu);
+router.get('/:day', optionalAuthenticate, getMenuByDay);
 
-// Admin routes
-router.post('/', authenticate, authorize(['admin', 'super_admin']), upload.single('image'), createMenuItem);
-router.put('/:id', authenticate, authorize(['admin', 'super_admin']), updateMenuItem);
-router.delete('/:id', authenticate, authorize(['admin', 'super_admin']), deleteMenuItem);
-router.patch('/:id/stock', authenticate, authorize(['admin', 'super_admin']), updateMenuItemStock);
+// Admin routes (with subscription check for vendors)
+router.post('/', authenticate, authorize(['admin', 'super_admin', 'vendor']), checkVendorSubscription, upload.single('image'), createMenuItem);
+router.put('/:id', authenticate, authorize(['admin', 'super_admin', 'vendor']), checkVendorSubscription, updateMenuItem);
+router.delete('/:id', authenticate, authorize(['admin', 'super_admin', 'vendor']), checkVendorSubscription, deleteMenuItem);
+router.patch('/:id/stock', authenticate, authorize(['admin', 'super_admin', 'vendor']), checkVendorSubscription, updateMenuItemStock);
 
 export default router;

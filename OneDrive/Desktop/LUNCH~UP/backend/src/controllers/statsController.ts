@@ -18,29 +18,43 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
 
     const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
+    // build base query depending on role
+    const baseQuery: any = { 'payment.status': 'paid' };
+    if (req.user && req.user.role === 'vendor') {
+      // restrict to orders containing vendor's items
+      const vendorMenuItems = await MenuItem.find({ vendor: req.user.id }).select('_id');
+      const ids = vendorMenuItems.map(m => m._id);
+      baseQuery['items.menuItemId'] = { $in: ids };
+    }
+
     // Revenue today
     const ordersToday = await Order.find({
+      ...baseQuery,
       createdAt: { $gte: today },
-      'payment.status': 'paid',
     });
     const revenueToday = ordersToday.reduce((sum, o) => sum + o.pricing.total, 0);
 
     // Revenue this week
     const ordersThisWeek = await Order.find({
+      ...baseQuery,
       createdAt: { $gte: thisWeekStart },
-      'payment.status': 'paid',
     });
     const revenueThisWeek = ordersThisWeek.reduce((sum, o) => sum + o.pricing.total, 0);
 
     // Revenue this month
     const ordersThisMonth = await Order.find({
+      ...baseQuery,
       createdAt: { $gte: thisMonthStart },
-      'payment.status': 'paid',
     });
     const revenueThisMonth = ordersThisMonth.reduce((sum, o) => sum + o.pricing.total, 0);
 
-    // Count orders by status
+    // Count orders by status (apply vendor filter too)
+    const statusMatch: any = {};
+    if (req.user && req.user.role === 'vendor') {
+      statusMatch['items.menuItemId'] = baseQuery['items.menuItemId'];
+    }
     const orderStats = await Order.aggregate([
+      { $match: statusMatch },
       {
         $group: {
           _id: '$status',
@@ -49,8 +63,11 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
       },
     ]);
 
-    // Unread notifications
-    const unreadNotifications = await Notification.countDocuments({ isRead: false });
+    // Unread notifications (admins only)
+    let unreadNotifications = 0;
+    if (!req.user || req.user.role !== 'vendor') {
+      unreadNotifications = await Notification.countDocuments({ isRead: false });
+    }
 
     res.json({
       success: true,
@@ -77,8 +94,15 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
  */
 export const getRevenueStats = async (req: Request, res: Response): Promise<void> => {
   try {
-    const days = [];
-    const data = [];
+    const days: string[] = [];
+    const data: number[] = [];
+
+    // if vendor, need to gather their menu item ids once
+    let vendorIds: any[] | null = null;
+    if (req.user && req.user.role === 'vendor') {
+      const vendorMenuItems = await MenuItem.find({ vendor: req.user.id }).select('_id');
+      vendorIds = vendorMenuItems.map(m => m._id);
+    }
 
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
@@ -88,10 +112,15 @@ export const getRevenueStats = async (req: Request, res: Response): Promise<void
       const nextDate = new Date(date);
       nextDate.setDate(nextDate.getDate() + 1);
 
-      const orders = await Order.find({
+      const query: any = {
         createdAt: { $gte: date, $lt: nextDate },
         'payment.status': 'paid',
-      });
+      };
+      if (vendorIds) {
+        query['items.menuItemId'] = { $in: vendorIds };
+      }
+
+      const orders = await Order.find(query);
 
       const revenue = orders.reduce((sum, o) => sum + o.pricing.total, 0);
 

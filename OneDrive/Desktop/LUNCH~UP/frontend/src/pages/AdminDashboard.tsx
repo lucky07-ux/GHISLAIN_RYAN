@@ -10,7 +10,9 @@ import {
   DollarSign,
   Package,
   Star,
-  RefreshCw
+  RefreshCw,
+  Gift,
+  Store
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { adminService } from '../services/adminService';
@@ -112,6 +114,24 @@ export default function AdminDashboard() {
           <MessageSquare className="text-purple-500 mb-3 group-hover:scale-110 transition" size={32} />
           <h3 className="font-bold text-lg mb-1">Avis</h3>
           <p className="text-sm text-[#A0A0A0]">Communauté</p>
+        </div>
+
+        <div
+          onClick={() => navigate('/admin/vendors')}
+          className="bg-indigo-600/20 border border-indigo-500/30 p-6 rounded-xl hover:border-indigo-500/50 transition cursor-pointer group"
+        >
+          <Store className="text-indigo-500 mb-3 group-hover:scale-110 transition" size={32} />
+          <h3 className="font-bold text-lg mb-1">Vendeurs</h3>
+          <p className="text-sm text-[#A0A0A0]">Gérer vendeurs</p>
+        </div>
+
+        <div
+          onClick={() => navigate('/admin/loyalty')}
+          className="bg-pink-600/20 border border-pink-500/30 p-6 rounded-xl hover:border-pink-500/50 transition cursor-pointer group"
+        >
+          <Gift className="text-pink-500 mb-3 group-hover:scale-110 transition" size={32} />
+          <h3 className="font-bold text-lg mb-1">Fidélité</h3>
+          <p className="text-sm text-[#A0A0A0]">Codes & Cashback</p>
         </div>
       </div>
 

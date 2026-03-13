@@ -12,6 +12,8 @@ import {
   Menu,
   X,
   RefreshCw,
+  Store,
+  Gift,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
@@ -23,6 +25,8 @@ const navItems = [
   { path: '/admin/menu', label: 'Menu / Inventaire', icon: UtensilsCrossed },
   { path: '/admin/customers', label: 'Clients', icon: Users },
   { path: '/admin/reviews', label: 'Avis Communauté', icon: MessageSquare },
+  { path: '/admin/vendors', label: 'Vendeurs', icon: Store },
+  { path: '/admin/loyalty', label: 'Fidélité', icon: Gift },
   { path: '/admin/settings', label: 'Paramètres', icon: Settings },
 ];
 

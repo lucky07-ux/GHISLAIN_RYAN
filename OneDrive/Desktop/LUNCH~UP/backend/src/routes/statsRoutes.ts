@@ -8,8 +8,8 @@ import { authenticate, authorize } from '../middlewares/auth.js';
 
 const router = Router();
 
-router.get('/overview', authenticate, authorize(['admin', 'super_admin']), getDashboardStats);
-router.get('/revenue', authenticate, authorize(['admin', 'super_admin']), getRevenueStats);
-router.get('/orders', authenticate, authorize(['admin', 'super_admin']), getOrdersStats);
+router.get('/overview', authenticate, authorize(['admin', 'super_admin', 'vendor']), getDashboardStats);
+router.get('/revenue', authenticate, authorize(['admin', 'super_admin', 'vendor']), getRevenueStats);
+router.get('/orders', authenticate, authorize(['admin', 'super_admin', 'vendor']), getOrdersStats);
 
 export default router;

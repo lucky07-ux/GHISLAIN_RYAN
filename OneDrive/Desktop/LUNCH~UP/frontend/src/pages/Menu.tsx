@@ -20,6 +20,7 @@ interface MenuItem {
 const DAYS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
 
 export default function Menu() {
+  const backendBaseUrl = (import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000');
   const navigate = useNavigate();
   const addItem = useCartStore((state) => state.addItem);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -109,16 +110,16 @@ export default function Menu() {
                   <div className="aspect-video bg-gradient-to-br from-[#FF6B35]/20 to-[#34D399]/20 relative overflow-hidden">
                     {item.imageUrl ? (
                       <img
-                        src={`http://localhost:5000${item.imageUrl}`}
+                        src={`${backendBaseUrl}${item.imageUrl}`}
                         alt={item.name}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                         onError={(e) => {
-                          console.error('❌ Client menu image load error:', `http://localhost:5000${item.imageUrl}`);
+                          console.error('❌ Client menu image load error:', `http://localhost:5001${item.imageUrl}`);
                           e.currentTarget.style.display = 'none';
                           e.currentTarget.nextElementSibling!.classList.remove('hidden');
                         }}
                         onLoad={() => {
-                          console.log('✅ Client menu image loaded:', `http://localhost:5000${item.imageUrl}`);
+                          console.log('✅ Client menu image loaded:', `http://localhost:5001${item.imageUrl}`);
                         }}
                       />
                     ) : null}

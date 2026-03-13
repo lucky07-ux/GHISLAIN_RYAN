@@ -44,6 +44,8 @@ export interface IOrderDoc extends Document {
     phone: string;
     assignedAt: Date;
   };
+  cashbackAwarded: boolean;
+  walletCashbackUsed?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -126,6 +128,15 @@ const orderSchema = new Schema<IOrderDoc>(
         updatedBy: String,
       },
     ],
+    cashbackAwarded: {
+      type: Boolean,
+      default: false,
+    },
+    walletCashbackUsed: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   { timestamps: true }
 );

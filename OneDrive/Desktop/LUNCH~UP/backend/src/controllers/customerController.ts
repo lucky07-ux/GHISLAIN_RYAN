@@ -92,3 +92,107 @@ export const getCustomerOrders = async (req: Request, res: Response): Promise<vo
     throw error;
   }
 };
+
+/**
+ * GET /api/customer/wallet
+ * Récupérer la balance du portefeuille cashback
+ */
+export const getWalletBalance = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const customerId = req.user?.userId;
+    if (!customerId) {
+      throw new AppError('Non authentifié', 401);
+    }
+
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      throw new AppError('Client introuvable', 404);
+    }
+
+    res.json({
+      success: true,
+      walletBalance: customer.walletBalance,
+      currency: 'FCFA',
+    });
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * GET /api/customer/cashback-history
+ * Récupérer l'historique des transactions cashback
+ */
+export const getCashbackHistory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const customerId = req.user?.userId;
+    if (!customerId) {
+      throw new AppError('Non authentifié', 401);
+    }
+
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      throw new AppError('Client introuvable', 404);
+    }
+
+    // Trier l'historique par date décroissante
+    const sortedHistory = customer.cashbackHistory.sort(
+      (a, b) => b.date.getTime() - a.date.getTime()
+    );
+
+    res.json({
+      success: true,
+      cashbackHistory: sortedHistory,
+      totalEarned: customer.cashbackHistory
+        .filter((t) => t.type === 'earned')
+        .reduce((sum, t) => sum + t.amount, 0),
+      totalUsed: customer.cashbackHistory
+        .filter((t) => t.type === 'used')
+        .reduce((sum, t) => sum + t.amount, 0),
+      currentBalance: customer.walletBalance,
+    });
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * POST /api/customer/use-cashback
+ * Utiliser du cashback
+ */
+export const useCashback = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const customerId = req.user?.userId;
+    if (!customerId) {
+      throw new AppError('Non authentifié', 401);
+    }
+
+    const { amount, orderId } = req.body;
+
+    if (!amount || amount <= 0) {
+      throw new AppError('Le montant doit être supérieur à 0', 400);
+    }
+
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      throw new AppError('Client introuvable', 404);
+    }
+
+    if (customer.walletBalance < amount) {
+      throw new AppError(
+        `Solde insuffisant. Vous avez ${customer.walletBalance} FCFA disponible.`,
+        400
+      );
+    }
+
+    await customer.useCashback(amount, orderId);
+
+    res.json({
+      success: true,
+      message: 'Cashback utilisé avec succès',
+      walletBalance: customer.walletBalance,
+    });
+  } catch (error) {
+    throw error;
+  }
+};

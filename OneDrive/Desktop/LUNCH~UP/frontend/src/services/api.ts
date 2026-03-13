@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_URL,
@@ -25,7 +25,12 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      window.location.href = '/admin/login';
+      const current = window.location.pathname;
+      if (current.startsWith('/vendor')) {
+        window.location.href = '/vendor/login';
+      } else {
+        window.location.href = '/admin/login';
+      }
     }
     return Promise.reject(error);
   }

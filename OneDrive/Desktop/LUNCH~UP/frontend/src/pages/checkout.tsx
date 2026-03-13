@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -6,8 +6,10 @@ import { z } from 'zod';
 import MainLayout from '../components/layout/MainLayout';
 import { useCartStore } from '../store/cartstore';
 import { orderService } from '../services/orderService';
+import { walletService } from '../services/walletService';
 import { formatCurrency } from '../utils/formatters';
 import toast from 'react-hot-toast';
+import { TrendingDown } from 'lucide-react';
 
 // Validation schema
 const orderSchema = z.object({
@@ -32,6 +34,47 @@ export default function Checkout() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState('cash');
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [useCashback, setUseCashback] = useState(false);
+  const [appliedCashback, setAppliedCashback] = useState(0);
+  const [loadingWallet, setLoadingWallet] = useState(true);
+
+  // Load wallet balance on mount
+  useEffect(() => {
+    const loadWallet = async () => {
+      try {
+        const data = await walletService.getWalletBalance();
+        setWalletBalance(data.balance || 0);
+      } catch (error: unknown) {
+        console.error('Erreur chargement portefeuille:', error);
+        setWalletBalance(0);
+      } finally {
+        setLoadingWallet(false);
+      }
+    };
+    loadWallet();
+  }, []);
+
+  // Calculate cashback amount
+  const maxCashbackUsable = Math.min(walletBalance, cartTotal);
+  const finalTotal = Math.max(0, cartTotal - appliedCashback);
+
+  // Handle cashback toggle
+  const handleToggleCashback = () => {
+    if (!useCashback) {
+      setUseCashback(true);
+      setAppliedCashback(maxCashbackUsable);
+    } else {
+      setUseCashback(false);
+      setAppliedCashback(0);
+    }
+  };
+
+  // Handle cashback amount change
+  const handleCashbackChange = (amount: number) => {
+    const validAmount = Math.min(Math.max(0, amount), maxCashbackUsable);
+    setAppliedCashback(validAmount);
+  };
 
   const handleInitiatePayment = async (orderId: string) => {
     setIsSubmitting(true);
@@ -42,7 +85,7 @@ export default function Checkout() {
         // Rediriger vers page paiement NotchPay
         window.location.href = response.paymentUrl;
       }
-    } catch (error: any) {
+    } catch {
       toast.error('Erreur initialisation paiement');
     } finally {
       setIsSubmitting(false);
@@ -82,21 +125,28 @@ export default function Checkout() {
           phoneNumber: data.paymentPhone,
         },
         specialInstructions: data.specialInstructions,
+        walletCashbackUsed: appliedCashback > 0 ? appliedCashback : undefined,
       };
 
       const orderResponse = await orderService.createOrder(orderData);
+
+      // mémoriser le téléphone client pour le tableau de bord
+      if (data.phone) {
+        localStorage.setItem('customerPhone', data.phone);
+      }
 
       // Si paiement en ligne choisi, rediriger vers NotchPay
       if (['orange_money', 'mtn_momo', 'card'].includes(data.paymentMethod)) {
         await handleInitiatePayment(orderResponse.order._id);
       } else {
-        // Cash - commande terminée
+        // Cash - commande terminée : rediriger vers page de suivi
         toast.success('Commande passée avec succès!');
         clearCart();
-        navigate('/');
+        navigate(`/track/${orderResponse.order.orderNumber}`);
       }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erreur lors de la commande');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Erreur lors de la commande';
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -290,9 +340,52 @@ export default function Checkout() {
                 <span>Livraison:</span>
                 <span>{formatCurrency(1000)}</span>
               </div>
+
+              {/* Cashback Section */}
+              {!loadingWallet && walletBalance > 0 && (
+                <div className="border-t border-[#34D399]/20 pt-4 mt-4">
+                  <div className="flex items-center justify-between mb-3 p-3 bg-[#34D399]/10 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <TrendingDown className="w-4 h-4 text-[#34D399]" />
+                      <span className="text-[#34D399] font-semibold">Solde: {formatCurrency(walletBalance)}</span>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useCashback}
+                      onChange={handleToggleCashback}
+                      className="w-4 h-4 rounded accent-[#34D399]"
+                    />
+                    <span className="text-[#D1D5DB] text-sm">Utiliser mon cashback</span>
+                  </label>
+
+                  {useCashback && (
+                    <div className="mt-3">
+                      <div className="flex justify-between text-xs text-[#A0A0A0] mb-2">
+                        <span>0</span>
+                        <span>{formatCurrency(maxCashbackUsable)}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max={maxCashbackUsable}
+                        value={appliedCashback}
+                        onChange={(e) => handleCashbackChange(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-[#0A0A0A] rounded-lg appearance-none cursor-pointer accent-[#34D399]"
+                      />
+                      <div className="text-center text-[#34D399] font-semibold text-sm mt-2">
+                        -{formatCurrency(appliedCashback)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-between text-2xl font-bold text-[#FF6B35] pt-2 border-t border-[#34D399]/20">
                 <span>Total:</span>
-                <span>{formatCurrency(cartTotal)}</span>
+                <span>{formatCurrency(finalTotal)}</span>
               </div>
             </div>
           </div>

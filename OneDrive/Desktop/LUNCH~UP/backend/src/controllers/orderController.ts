@@ -2,11 +2,13 @@ import { Request, Response } from 'express';
 import { sendWhatsApp, templates } from '../services/whatsapp.service';
 import { Order, IOrderDoc } from '../models/Order';
 import { MenuItem } from '../models/MenuItem';
+import { Customer } from '../models/Customer';
+import { Settings } from '../models/Settings';
 import crypto from 'crypto';
 
 export const createOrder = async (req: Request, res: Response) => {
   try {
-    const { customerInfo, deliveryInfo, items, payment, specialInstructions } = req.body;
+    const { customerInfo, deliveryInfo, items, payment, specialInstructions, walletCashbackUsed } = req.body;
 
     // Validate required fields
     if (!customerInfo || !deliveryInfo || !items || !payment) {
@@ -37,7 +39,24 @@ export const createOrder = async (req: Request, res: Response) => {
 
     // Assume fixed delivery fee for now
     const deliveryFee = 1000;
-    const total = subtotal + deliveryFee;
+    let total = subtotal + deliveryFee;
+
+    // Handle wallet cashback usage
+    let appliedCashback = 0;
+    if (walletCashbackUsed && walletCashbackUsed > 0) {
+      // Find customer to verify they have sufficient cashback
+      const customer = await Customer.findOne({ phone: customerInfo.phone });
+      if (customer) {
+        const maxUsable = Math.min(customer.walletBalance || 0, total);
+        appliedCashback = Math.min(walletCashbackUsed, maxUsable);
+        if (appliedCashback > 0) {
+          // Use cashback from wallet
+          customer.useCashback(appliedCashback, '');
+          await customer.save();
+          total -= appliedCashback;
+        }
+      }
+    }
 
     // Create order
     const order = new Order({
@@ -48,6 +67,7 @@ export const createOrder = async (req: Request, res: Response) => {
       pricing: { subtotal, deliveryFee, total },
       payment,
       specialInstructions,
+      walletCashbackUsed: appliedCashback,
       status: 'pending',
       statusHistory: [{ status: 'pending', timestamp: new Date() }],
     });
@@ -98,11 +118,18 @@ export const getAllOrders = async (req, res) => {
     if (status) query.status = status;
     if (paymentStatus) query['payment.status'] = paymentStatus;
 
+    // if vendor, only return orders containing his items
+    if (req.user && req.user.role === 'vendor') {
+      const vendorMenuItems = await MenuItem.find({ vendor: req.user.id }).select('_id');
+      const ids = vendorMenuItems.map(m => m._id);
+      query['items.menuItemId'] = { $in: ids };
+    }
+
     const orders = await Order.find(query)
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
-      .populate('items.menuItemId', 'name price');
+      .populate('items.menuItemId', 'name price vendor');
 
     const total = await Order.countDocuments(query);
 
@@ -124,10 +151,17 @@ export const getAllOrders = async (req, res) => {
 export const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
-    const order = await Order.findById(id).populate('items.menuItemId', 'name price');
+    const order = await Order.findById(id).populate('items.menuItemId', 'name price vendor');
 
     if (!order) {
       return res.status(404).json({ error: 'Commande non trouvée' });
+    }
+
+    if (req.user && req.user.role === 'vendor') {
+      const hasItem = order.items.some(i => i.menuItemId.vendor?.toString() === req.user.id);
+      if (!hasItem) {
+        return res.status(403).json({ error: 'Accès non autorisé' });
+      }
     }
 
     res.json({ success: true, order });
@@ -141,14 +175,57 @@ export const updateOrderStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
+    // allowed forward transitions (lowercase)
+    const transitions: Record<string, string> = {
+      pending: 'accepted',
+      accepted: 'ready',
+      ready: 'delivered',
+    };
+
+    // fetch current state first to validate
+    const existing = await Order.findById(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Commande non trouvée' });
+    }
+
+    const currentState = existing.status.toLowerCase();
+    const expected = transitions[currentState];
+    if (!expected) {
+      return res.status(400).json({ error: 'Current order state cannot be changed' });
+    }
+    if (status.toLowerCase() !== expected) {
+      return res.status(400).json({ error: 'Invalid status transition' });
+    }
+
     const order = await Order.findByIdAndUpdate(
       id,
       { status },
       { new: true }
     ).populate('items.menuItemId', 'name price');
 
-    if (!order) {
-      return res.status(404).json({ error: 'Commande non trouvée' });
+    // Ajouter du cashback quand la commande est livrée
+    if (status === 'delivered' && !order.cashbackAwarded) {
+      try {
+        // Récupérer le pourcentage de cashback depuis les paramètres
+        const settings = await Settings.findOne({});
+        const cashbackPercentage = (settings as any)?.loyalty?.cashbackPercentage || 2;
+
+        // Calculer le montant du cashback
+        const cashbackAmount = Math.round((order.pricing.total * cashbackPercentage) / 100);
+
+        // Trouver le client par téléphone et ajouter le cashback
+        const customer = await Customer.findOne({ phone: order.customerInfo.phone });
+        if (customer) {
+          await customer.addCashback(cashbackAmount, order._id.toString());
+          
+          // Marquer le cashback comme attribué
+          order.cashbackAwarded = true;
+          await order.save();
+        }
+      } catch (cashbackError) {
+        console.error('Erreur lors de l\'ajout du cashback:', cashbackError);
+        // Ne pas échouer la requête si le cashback échoue
+      }
     }
 
     res.json({ success: true, order });

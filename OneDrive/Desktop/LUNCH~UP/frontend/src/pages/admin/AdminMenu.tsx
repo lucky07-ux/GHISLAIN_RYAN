@@ -12,11 +12,13 @@ interface MenuItemType {
   dayOfWeek: string;
   quantityAvailable: number;
   imageUrl?: string;
+  isActive?: boolean;
 }
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
 export default function AdminMenu() {
+  const backendBaseUrl = (import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000');
   const [menuItems, setMenuItems] = useState<MenuItemType[]>([]);
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState<MenuItemType>({
@@ -26,6 +28,7 @@ export default function AdminMenu() {
     dayOfWeek: 'Lundi',
     quantityAvailable: 10,
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [imageUrl, setImageUrl] = useState<string>('');
@@ -66,31 +69,55 @@ export default function AdminMenu() {
       return;
     }
     try {
-      const formDataToSend = new FormData();
-      formDataToSend.append('name', formData.name);
-      formDataToSend.append('price', formData.price.toString());
-      formDataToSend.append('description', formData.description || '');
-      formDataToSend.append('dayOfWeek', formData.dayOfWeek.toLowerCase());
-      formDataToSend.append('quantityAvailable', formData.quantityAvailable.toString());
-      if (imageFile) {
-        formDataToSend.append('image', imageFile);
+      const body: any = {
+        name: formData.name,
+        price: formData.price,
+        description: formData.description,
+        dayOfWeek: formData.dayOfWeek.toLowerCase(),
+        quantityAvailable: formData.quantityAvailable,
+      };
+      if (formData.isActive !== undefined) {
+        body.isActive = formData.isActive;
       }
-      if (imageUrl) {
-        formDataToSend.append('imageUrl', imageUrl);
+      const isForm = imageFile || imageUrl;
+      let responseData;
+      if (editingId) {
+        // update existing
+        if (isForm) {
+          const formDataToSend = new FormData();
+          Object.entries(body).forEach(([k,v]) => formDataToSend.append(k, String(v)));
+          if (imageFile) formDataToSend.append('image', imageFile);
+          if (imageUrl) formDataToSend.append('imageUrl', imageUrl);
+          responseData = await menuService.updateMenuItem(editingId, formDataToSend as any);
+        } else {
+          responseData = await menuService.updateMenuItem(editingId, body);
+        }
+        toast.success('Plat mis à jour');
+      } else {
+        // create new
+        if (isForm) {
+          const formDataToSend = new FormData();
+          Object.entries(body).forEach(([k,v]) => formDataToSend.append(k, String(v)));
+          if (imageFile) formDataToSend.append('image', imageFile);
+          if (imageUrl) formDataToSend.append('imageUrl', imageUrl);
+          responseData = await menuService.createMenuItem(formDataToSend as any);
+        } else {
+          responseData = await menuService.createMenuItem(body);
+        }
+        toast.success('Plat ajouté');
       }
 
-      await menuService.createMenuItem(formDataToSend);
-      toast.success('Plat ajouté');
       setFormData({ name: '', price: 0, description: '', dayOfWeek: 'Lundi', quantityAvailable: 10 });
       setImageFile(null);
       setImagePreview('');
       setImageUrl('');
+      setEditingId(null);
       loadMenu();
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
         : null;
-      toast.error(msg || 'Erreur ajout');
+      toast.error(msg || (editingId ? 'Erreur mise à jour' : 'Erreur ajout'));
     }
   };
 
@@ -102,6 +129,31 @@ export default function AdminMenu() {
       loadMenu();
     } catch {
       toast.error('Erreur suppression');
+    }
+  };
+
+  const handleEdit = (item: MenuItemType & { _id?: string }) => {
+    setEditingId(item._id || null);
+    setFormData({
+      name: item.name,
+      price: item.price,
+      description: item.description,
+      dayOfWeek: item.dayOfWeek.charAt(0).toUpperCase() + item.dayOfWeek.slice(1),
+      quantityAvailable: item.quantityAvailable,
+      isActive: item.isActive,
+    } as any);
+    setImageUrl(item.imageUrl || '');
+    setImagePreview('');
+    setImageFile(null);
+  };
+
+  const toggleActive = async (item: any) => {
+    try {
+      await menuService.updateMenuItem(item._id, { isActive: !item.isActive });
+      toast.success(`Plat ${item.isActive ? 'désactivé' : 'activé'}`);
+      loadMenu();
+    } catch {
+      toast.error('Erreur modification disponibilité');
     }
   };
 
@@ -182,6 +234,17 @@ export default function AdminMenu() {
             onChange={(e) => setFormData({ ...formData, quantityAvailable: parseInt(e.target.value) || 0 })}
             className="px-4 py-2 bg-[#0A0A0A] border border-[#34D399]/30 rounded-lg text-white focus:outline-none focus:border-[#FF6B35]"
           />
+          {editingId && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={Boolean(formData.isActive)}
+                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked as any })}
+                className="w-4 h-4"
+              />
+              <span className="text-[#A0A0A0] text-sm">Actif</span>
+            </label>
+          )}
           <textarea
             placeholder="Description"
             value={formData.description || ''}
@@ -267,20 +330,20 @@ export default function AdminMenu() {
                       {items.map((item) => (
                         <div
                           key={item._id}
-                          className="bg-[#0A0A0A] border border-[#34D399]/10 p-4 rounded-xl overflow-hidden"
+                          className={`bg-[#0A0A0A] border border-[#34D399]/10 p-4 rounded-xl overflow-hidden ${item.isActive === false ? 'opacity-50' : ''}`}
                         >
                           {item.imageUrl && (
                             <div className="w-full h-32 mb-3 rounded-lg overflow-hidden">
                               <img
-                                src={`http://localhost:5000${item.imageUrl}`}
+                                src={`${backendBaseUrl}${item.imageUrl}`}
                                 alt={item.name}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
-                                  console.error('❌ Image load error:', `http://localhost:5000${item.imageUrl}`);
+                                  console.error('❌ Image load error:', `${backendBaseUrl}${item.imageUrl}`);
                                   e.currentTarget.style.display = 'none';
                                 }}
                                 onLoad={() => {
-                                  console.log('✅ Image loaded:', `http://localhost:5000${item.imageUrl}`);
+                                  console.log('✅ Image loaded:', `${backendBaseUrl}${item.imageUrl}`);
                                 }}
                               />
                               {/* Debug info */}
@@ -290,6 +353,9 @@ export default function AdminMenu() {
                             </div>
                           )}
                           <div className="flex justify-between items-start">
+                            {!item.isActive && (
+                              <span className="text-xs text-red-500 font-bold">Désactivé</span>
+                            )}
                             <div className="flex-1 min-w-0">
                               <h4 className="font-bold text-white truncate">{item.name}</h4>
                               <p className="text-sm text-[#A0A0A0] mt-1 line-clamp-2">{item.description}</p>
@@ -309,6 +375,18 @@ export default function AdminMenu() {
                               </div>
                             </div>
                             <div className="flex gap-2 ml-2">
+                              <button
+                                onClick={() => item._id && handleEdit(item)}
+                                className="p-2 hover:bg-blue-600/20 rounded-lg transition text-blue-500"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                              <button
+                                onClick={() => item._id && toggleActive(item)}
+                                className="p-2 hover:bg-yellow-600/20 rounded-lg transition text-yellow-500"
+                              >
+                                {item.isActive ? <CheckCircle size={18} /> : <XCircle size={18} />}
+                              </button>
                               <button
                                 onClick={() => item._id && handleDelete(item._id)}
                                 className="p-2 hover:bg-red-600/20 rounded-lg transition text-red-500"

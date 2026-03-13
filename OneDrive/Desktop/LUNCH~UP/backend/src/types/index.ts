@@ -5,7 +5,7 @@ export interface IUser {
   email: string;
   password: string;
   name: string;
-  role: 'admin' | 'super_admin';
+  role: 'admin' | 'super_admin' | 'vendor' | 'user';
   createdAt?: Date;
   lastLogin?: Date;
 }
@@ -85,7 +85,26 @@ export interface ICustomer {
     totalSpent: number;
     lastOrderDate?: Date;
   };
+  walletBalance: number;
+  cashbackHistory: {
+    date: Date;
+    amount: number;
+    type: 'earned' | 'used';
+    orderId?: string;
+    description: string;
+  }[];
+  points: {
+    total: number;
+    level: 'bronze' | 'silver' | 'gold' | 'platinum';
+  };
+  referralCode: string;
+  referredBy?: string;
   createdAt?: Date;
+}
+
+export interface IUserCustomer extends ICustomer {
+  role: 'user';
+  password: string;
 }
 
 export interface IReview {
@@ -139,10 +158,12 @@ export interface ISettings {
 export interface JWTPayload {
   id: string;
   email: string;
-  role: string;
+  role: 'admin' | 'super_admin' | 'vendor' | 'user';
 }
 
 export interface AuthRequest {
-  email: string;
+  email?: string;
+  phone?: string;
   password: string;
+  role: 'admin' | 'super_admin' | 'vendor' | 'user';
 }

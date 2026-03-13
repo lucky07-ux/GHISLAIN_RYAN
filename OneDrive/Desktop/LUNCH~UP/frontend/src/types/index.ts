@@ -61,6 +61,9 @@ export interface AdminUser {
   email: string;
   name: string;
   role: string;
+  phone?: string;
+  address?: string;
+  image?: string;
 }
 
 export interface ApiResponse<T> {

@@ -84,3 +84,26 @@ export const normalizeCameroonPhone = (phone: string): string => {
   // Ajouter le code pays
   return '+237' + cleaned;
 };
+
+/**
+ * Génère un code de parrainage unique (8 chars alphanum)
+ */
+export const generateReferralCode = (): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let result = 'REF-';
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
+/**
+ * Obtient le niveau à partir des points
+ */
+export const getLevelFromPoints = (points: number): 'bronze' | 'silver' | 'gold' | 'platinum' => {
+  if (points >= 5000) return 'platinum';
+  if (points >= 2000) return 'gold';
+  if (points >= 500) return 'silver';
+  return 'bronze';
+};
+

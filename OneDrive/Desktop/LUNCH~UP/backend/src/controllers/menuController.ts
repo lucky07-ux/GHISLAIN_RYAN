@@ -124,11 +124,11 @@ export const getCurrentMenu = async (req: Request, res: Response): Promise<void>
     const { weekNumber, year } = getCurrentWeek();
 
     // Fetch menu items from database
-    const menuItems = await MenuItem.find({
-      weekNumber,
-      year,
-      isActive: true
-    }).sort({ dayOfWeek: 1 });
+    const query: any = { weekNumber, year, isActive: true };
+    if (req.user && req.user.role === 'vendor') {
+      query.vendor = req.user.id;
+    }
+    const menuItems = await MenuItem.find(query).sort({ dayOfWeek: 1 });
 
     // Images are served via static files at /uploads route
 
@@ -164,6 +164,26 @@ export const getMenuByDay = async (req: Request, res: Response): Promise<void> =
       item.year === year &&
       item.isActive
     );
+    // NOTE: mock data not vendor-specific, real db path handles it below
+
+    // If real data, query DB (vendor filter applies via optionalAuthenticate)
+    const realQuery: any = {
+      dayOfWeek: day.toLowerCase(),
+      weekNumber,
+      year,
+      isActive: true,
+    };
+    if (req.user && req.user.role === 'vendor') {
+      realQuery.vendor = req.user.id;
+    }
+    const realItems = await MenuItem.find(realQuery).sort({ dayOfWeek: 1 });
+
+    res.json({
+      success: true,
+      day,
+      menuItems: realItems,
+    });
+    return; // skip sending mock data
 
     res.json({
       success: true,
@@ -198,8 +218,8 @@ export const createMenuItem = async (req: Request, res: Response): Promise<void>
       imageUrl = req.body.imageUrl;
     }
 
-    // Create menu item in database
-    const menuItem = await MenuItem.create({
+    // create base object and attach vendor if necessary
+    const data: any = {
       name,
       description,
       price,
@@ -210,7 +230,13 @@ export const createMenuItem = async (req: Request, res: Response): Promise<void>
       quantityAvailable,
       category,
       isActive: true,
-    });
+    };
+    if (req.user && req.user.role === 'vendor') {
+      data.vendor = req.user.id;
+    }
+
+    // Create menu item in database
+    const menuItem = await MenuItem.create(data);
 
     res.status(201).json({
       success: true,
@@ -231,11 +257,15 @@ export const updateMenuItem = async (req: Request, res: Response): Promise<void>
     const { id } = req.params;
     const updates = req.body;
 
-    const menuItem = await MenuItem.findByIdAndUpdate(id, updates, { new: true });
-
+    // if vendor trying to update, ensure ownership
+    let menuItem = await MenuItem.findById(id);
     if (!menuItem) {
       throw new AppError('Plat introuvable', 404);
     }
+    if (req.user && req.user.role === 'vendor' && menuItem.vendor.toString() !== req.user.id) {
+      throw new AppError('Accès non autorisé', 403);
+    }
+    menuItem = await MenuItem.findByIdAndUpdate(id, updates, { new: true });
 
     res.json({
       success: true,
@@ -255,7 +285,14 @@ export const deleteMenuItem = async (req: Request, res: Response): Promise<void>
   try {
     const { id } = req.params;
 
-    const menuItem = await MenuItem.findByIdAndDelete(id);
+    let menuItem = await MenuItem.findById(id);
+    if (!menuItem) {
+      throw new AppError('Plat introuvable', 404);
+    }
+    if (req.user && req.user.role === 'vendor' && menuItem.vendor.toString() !== req.user.id) {
+      throw new AppError('Accès non autorisé', 403);
+    }
+    menuItem = await MenuItem.findByIdAndDelete(id);
 
     if (!menuItem) {
       throw new AppError('Plat introuvable', 404);
@@ -283,7 +320,14 @@ export const updateMenuItemStock = async (req: Request, res: Response): Promise<
       throw new AppError('Quantité requise', 400);
     }
 
-    const menuItem = await MenuItem.findByIdAndUpdate(
+    let menuItem = await MenuItem.findById(id);
+    if (!menuItem) {
+      throw new AppError('Plat introuvable', 404);
+    }
+    if (req.user && req.user.role === 'vendor' && menuItem.vendor.toString() !== req.user.id) {
+      throw new AppError('Accès non autorisé', 403);
+    }
+    menuItem = await MenuItem.findByIdAndUpdate(
       id,
       { quantityAvailable },
       { new: true }

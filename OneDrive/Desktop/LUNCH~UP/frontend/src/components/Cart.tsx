@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { X, Minus, Plus, Trash2 } from 'lucide-react';
-import type { CartState } from '../store/cartstore';
-import { useCartStore } from '../store/cartstore';
+import { useCart } from '../contexts/CartContext';
 import { formatCurrency } from '../utils/formatters';
 import type { CartItem } from '../types/index';
 
@@ -12,11 +11,9 @@ interface CartSidebarProps {
 
 export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
   const navigate = useNavigate();
-  const items = useCartStore((state: CartState) => state.items);
-  const removeItem = useCartStore((state: CartState) => state.removeItem);
-  const updateQuantity = useCartStore((state: CartState) => state.updateQuantity);
-  const getSubtotal = useCartStore((state: CartState) => state.getSubtotal);
-  const getTotal = useCartStore((state: CartState) => state.getTotal);
+  const { items, removeItem, updateQuantity, getSubtotal } = useCart();
+  // shipping fee fixed in component
+  const getTotal = () => getSubtotal() + 1000;
 
   if (!isOpen) return null;
 

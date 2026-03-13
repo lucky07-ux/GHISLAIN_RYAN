@@ -1,4 +1,6 @@
 import express, { Express, Request, Response } from 'express';
+import http from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -16,19 +18,51 @@ import customerRoutes from './routes/customerRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
+import vendorRoutes from './routes/vendorRoutes.js';
+import loyaltyRoutes from './routes/loyaltyRoutes.js';
+import vendorPortalRoutes from './routes/vendorPortalRoutes.js';
+import pointsRoutes from './routes/pointsRoutes.js';
+import clientRoutes from './routes/clientRoutes.js';
 
 const app: Express = express();
+
+// Create HTTP server for Socket.io
+const server = http.createServer(app);
+
+// Initialize Socket.io
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: 'http://localhost:5173',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+});
+
+// Socket.io connection handling
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+
+  socket.on('register', ({ userId, role }) => {
+    if (userId) {
+      socket.data.userId = userId;
+      socket.data.role = role;
+      socket.join(`${role}_${userId}`);
+      console.log(`User ${role}_${userId} joined room`);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+});
+
+// Export io for use in controllers/routes
+export { io };
 
 // Middleware de sécurité
 app.use(helmet());
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5175',
-    'http://localhost:5176',
-    config.frontendUrl,
-  ],
+  origin: 'http://localhost:5173',
   credentials: true,
 }));
 
@@ -52,14 +86,20 @@ app.use('/uploads', (req, res, next) => {
 }, express.static(path.join(process.cwd(), 'public/uploads')));
 
 // Routes
-app.use('/api/admin', authRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin/customers', customerRoutes);
 app.use('/api/admin/notifications', notificationRoutes);
 app.use('/api/admin/stats', statsRoutes);
+app.use('/api/admin/vendors', vendorRoutes);
+app.use('/api/admin/loyalty', loyaltyRoutes);
+app.use('/api/loyalty', loyaltyRoutes);
+app.use('/api/vendor', vendorPortalRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/points', pointsRoutes);
+app.use('/api/client', clientRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
@@ -100,10 +140,11 @@ const startServer = async (): Promise<void> => {
     // Connexion à la base de données
     await connectDB();
 
-    // Démarrage du serveur
-const PORT = config.port || 5001;
-    app.listen(PORT, () => {
-      console.log(`✓ Serveur démarré sur le port ${PORT}`);p[;]
+    // Démarrage du serveur HTTP avec Socket.io
+    const PORT = config.port || 5000;
+    server.listen(PORT, () => {
+      console.log(`✓ Serveur démarré sur le port ${PORT}`);
+      console.log(`✓ Socket.io connecté`);
       console.log(`✓ Environnement: ${config.nodeEnv}`);
       console.log(`✓ Frontend URL: ${config.frontendUrl}`);
     });

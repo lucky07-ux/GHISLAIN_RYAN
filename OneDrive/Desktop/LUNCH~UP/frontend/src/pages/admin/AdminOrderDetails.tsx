@@ -26,6 +26,7 @@ const statusBadge: Record<string, string> = {
 export default function AdminOrderDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const basePath = window.location.pathname.startsWith('/vendor') ? '/vendor' : '/admin';
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [newStatus, setNewStatus] = useState('');
@@ -41,7 +42,7 @@ export default function AdminOrderDetails() {
         setNewStatus(res.order?.status || '');
       } catch {
         toast.error('Commande introuvable');
-        navigate('/admin/orders');
+        navigate(`${basePath}/orders`);
       } finally {
         setLoading(false);
       }
@@ -93,7 +94,7 @@ export default function AdminOrderDetails() {
     try {
       await orderService.deleteOrder(id);
       toast.success('Commande supprimée');
-      navigate('/admin/orders');
+      navigate(`${basePath}/orders`);
     } catch {
       toast.error('Erreur suppression');
     }
@@ -110,7 +111,7 @@ export default function AdminOrderDetails() {
   return (
     <div>
       <button
-        onClick={() => navigate('/admin/orders')}
+        onClick={() => navigate(`${basePath}/orders`)}
         className="flex items-center gap-2 text-[#A0A0A0] hover:text-white mb-6 transition"
       >
         <ArrowLeft size={20} />

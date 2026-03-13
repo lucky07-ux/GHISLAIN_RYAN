@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IMenuItemDoc extends Document {
   name: string;
@@ -12,6 +12,7 @@ export interface IMenuItemDoc extends Document {
   category?: string;
   accompaniments?: string;
   isActive: boolean;
+  vendor: Types.ObjectId; // reference to Vendor
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +55,11 @@ const menuItemSchema = new Schema<IMenuItemDoc>(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    vendor: {
+      type: Schema.Types.ObjectId,
+      ref: 'Vendor',
+      required: [true, 'Menu item must belong to a vendor'],
     },
   },
   { timestamps: true }

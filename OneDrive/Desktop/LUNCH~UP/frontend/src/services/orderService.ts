@@ -8,9 +8,9 @@ export const orderService = {
     return response.data;
   },
 
-  // Récupérer les détails d'une commande
-  getOrder: async (orderNumber: string) => {
-    const response = await apiClient.get(`/orders/${orderNumber}`);
+  // Suivre une commande par orderNumber (public)
+  trackOrder: async (orderNumber: string) => {
+    const response = await apiClient.get(`/orders/track/${orderNumber}`);
     return response.data;
   },
 

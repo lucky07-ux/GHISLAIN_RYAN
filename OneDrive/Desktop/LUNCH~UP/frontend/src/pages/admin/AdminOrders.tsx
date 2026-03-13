@@ -4,6 +4,7 @@ import { orderService } from '../../services/orderService';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { ShoppingBag, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '../../store/authStore';
 
 interface OrderItem {
   _id: string;
@@ -35,8 +36,22 @@ export default function AdminOrders() {
   const [searchParams] = useSearchParams();
   const statusFromUrl = searchParams.get('status') || '';
   const [orders, setOrders] = useState<OrderItem[]>([]);
+  const user = useAuthStore(state => state.user);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState(statusFromUrl);
+
+  const updateStatus = async (id: string, status: string) => {
+    try {
+      await orderService.updateOrderStatus(id, status);
+      toast.success('Statut mis à jour');
+      loadOrders();
+    } catch {
+      toast.error('Erreur mise à jour statut');
+    }
+  };
+
+  const location = window.location.pathname;
+  const basePath = location.startsWith('/vendor') ? '/vendor' : '/admin';
 
   const loadOrders = async () => {
     try {
@@ -108,6 +123,7 @@ export default function AdminOrders() {
                   <th className="p-4 text-[#A0A0A0] font-medium">Paiement</th>
                   <th className="p-4 text-[#A0A0A0] font-medium">Statut</th>
                   <th className="p-4 text-[#A0A0A0] font-medium">Action</th>
+                  {user?.role === 'vendor' && <th className="p-4 text-[#A0A0A0] font-medium">Rapide</th>}
                 </tr>
               </thead>
               <tbody>
@@ -135,12 +151,36 @@ export default function AdminOrders() {
                     </td>
                     <td className="p-4">
                       <Link
-                        to={`/admin/orders/${order._id}`}
+                        to={`${basePath}/orders/${order._id}`}
                         className="text-[#34D399] hover:text-[#34D399]/80 font-medium"
                       >
                         Voir détails
                       </Link>
                     </td>
+                    {user?.role === 'vendor' && (
+                      <td className="p-4">
+                        <div className="flex gap-2">
+                          {order.status === 'pending' && (
+                            <button
+                              onClick={() => updateStatus(order._id, 'confirmed')}
+                              className="text-blue-400 text-sm"
+                            >Accepter</button>
+                          )}
+                          {order.status === 'confirmed' && (
+                            <button
+                              onClick={() => updateStatus(order._id, 'processing')}
+                              className="text-orange-400 text-sm"
+                            >Préparer</button>
+                          )}
+                          {order.status === 'processing' && (
+                            <button
+                              onClick={() => updateStatus(order._id, 'delivered')}
+                              className="text-green-400 text-sm"
+                            >Livré</button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

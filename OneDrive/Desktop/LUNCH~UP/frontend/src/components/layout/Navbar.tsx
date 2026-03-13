@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingCart, Menu, X } from 'lucide-react';
-import { useCartStore } from '../../store/cartstore';
+import { useCart } from '../../contexts/CartContext';
 import CartSidebar from '../Cart';
 import logo from '../../assets/logo/lunchup-logo.png';
 
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const cartItems = useCartStore((state) => state.items);
+  const { items } = useCart();
   const navigate = useNavigate();
 
-  const cartCount = cartItems.length;
+  const cartCount = items.length;
 
   return (
     <>
@@ -30,8 +30,8 @@ export default function Navbar() {
             <Link to="/" className="text-[#D1D5DB] hover:text-white transition">
               Accueil
             </Link>
-            <Link to="/menu" className="text-[#D1D5DB] hover:text-white transition">
-              Menu
+            <Link to="/vendors" className="text-[#D1D5DB] hover:text-white transition">
+              Vendeurs
             </Link>
             <Link to="/community" className="text-[#D1D5DB] hover:text-white transition">
               Communauté
@@ -55,6 +55,12 @@ export default function Navbar() {
               )}
             </button>
 
+            <button
+              onClick={() => navigate('/my-orders')}
+              className="hidden md:block px-4 py-2 text-sm font-medium text-[#A0A0A0] hover:text-white transition"
+            >
+              Mes commandes
+            </button>
             <button
               onClick={() => navigate('/admin/login')}
               className="hidden md:block px-4 py-2 text-sm font-medium text-[#A0A0A0] hover:text-white transition"
@@ -87,11 +93,11 @@ export default function Navbar() {
               Accueil
             </Link>
             <Link
-              to="/menu"
+              to="/vendors"
               className="block text-[#D1D5DB] hover:text-white transition py-2"
               onClick={() => setIsMenuOpen(false)}
             >
-              Menu
+              Vendeurs
             </Link>
             <Link
               to="/community"
@@ -99,6 +105,13 @@ export default function Navbar() {
               onClick={() => setIsMenuOpen(false)}
             >
               Communauté
+            </Link>
+            <Link
+              to="/my-orders"
+              className="block text-[#D1D5DB] hover:text-white transition py-2"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              Mes commandes
             </Link>
             <a
               href="tel:+237691710289"

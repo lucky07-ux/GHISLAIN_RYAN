@@ -1,214 +1,363 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Star, Truck, Utensils, DollarSign, Leaf } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
+import L from 'leaflet';
+import {
+  Filter,
+  MapPin,
+  Search,
+  Star,
+  Timer,
+  UtensilsCrossed,
+} from 'lucide-react';
 import MainLayout from '../components/layout/MainLayout';
-import { menuService } from '../services/menuService';
-import { useCartStore } from '../store/cartstore';
-import { formatCurrency } from '../utils/formatters';
-import flyer from '../assets/flyer/lunchup-flyer.jpg';
+import { clientService } from '../services/clientService';
 
-interface MenuItem {
-  _id: string;
-  name: string;
-  price: number;
-  description?: string;
-  dayOfWeek: string;
-  quantityAvailable: number;
+interface Vendor {
+  id: string;
+  business_name: string;
+  owner_name: string;
+  phone?: string;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+type CuisineFilter =
+  | 'all'
+  | 'african'
+  | 'fast_food'
+  | 'bbq'
+  | 'breakfast'
+  | 'street_food'
+  | 'drinks'
+  | 'desserts';
+
+const cuisineLabels: Record<CuisineFilter, string> = {
+  all: 'Tout',
+  african: 'African food',
+  fast_food: 'Fast food',
+  bbq: 'BBQ & grills',
+  breakfast: 'Breakfast',
+  street_food: 'Street food',
+  drinks: 'Drinks',
+  desserts: 'Desserts',
+};
+
+const defaultCenter: [number, number] = [3.848, 11.502]; // Yaoundé approximatif
+
+const vendorIcon = new L.Icon({
+  iconUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
+
+function haversineDistance(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLon = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLon = Math.sin(dLon / 2);
+
+  const aa =
+    sinDLat * sinDLat +
+    sinDLon * sinDLon * Math.cos(lat1) * Math.cos(lat2);
+  const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+  return R * c;
 }
 
 export default function Home() {
   const navigate = useNavigate();
-  const addItem = useCartStore((state) => state.addItem);
-  const [featuredItems, setFeaturedItems] = useState<MenuItem[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [cuisine, setCuisine] = useState<CuisineFilter>('all');
+  const [sortBy, setSortBy] = useState<'popularity' | 'fastest' | 'rating'>(
+    'popularity',
+  );
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(
+    null,
+  );
 
   useEffect(() => {
-    const loadMenu = async () => {
+    const loadVendors = async () => {
       try {
-        const response = await menuService.getCurrentMenu();
-        setFeaturedItems(response.menuItems.slice(0, 3));
-      } catch (error) {
-        console.error('Error loading menu:', error);
+        const res = await clientService.getVendors();
+        setVendors(res.vendors || []);
       } finally {
         setLoading(false);
       }
     };
-    loadMenu();
+    loadVendors();
   }, []);
 
-  const handleAddToCart = (item: MenuItem) => {
-    addItem({
-      menuItemId: item._id,
-      name: item.name,
-      price: item.price,
-      quantity: 1,
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation([pos.coords.latitude, pos.coords.longitude]);
+      },
+      () => {
+        // ignore errors – l’utilisateur peut toujours naviguer sans
+      },
+    );
+  }, []);
+
+  const filteredVendors = useMemo(() => {
+    let list = vendors;
+
+    if (search.trim()) {
+      const term = search.toLowerCase();
+      list = list.filter((v) =>
+        v.business_name.toLowerCase().includes(term),
+      );
+    }
+
+    if (cuisine !== 'all') {
+      // Pour l'instant, on ne filtre pas réellement par type de cuisine,
+      // mais on pourrait le faire quand le backend exposera cette info.
+      list = list;
+    }
+
+    const withMeta = list.map((v) => {
+      let distanceKm: number | null = null;
+      if (
+        userLocation &&
+        typeof v.latitude === 'number' &&
+        typeof v.longitude === 'number'
+      ) {
+        distanceKm = haversineDistance(
+          { lat: userLocation[0], lng: userLocation[1] },
+          { lat: v.latitude, lng: v.longitude },
+        );
+      }
+      const prepMin = 20;
+      const deliveryMin = 15;
+      const rating = 4.7;
+      const reviews = 120;
+      return { ...v, distanceKm, prepMin, deliveryMin, rating, reviews };
     });
-    toast.success(`${item.name} ajouté au panier!`);
-  };
+
+    withMeta.sort((a, b) => {
+      if (sortBy === 'rating') {
+        return b.rating - a.rating;
+      }
+      if (sortBy === 'fastest') {
+        return a.prepMin + a.deliveryMin - (b.prepMin + b.deliveryMin);
+      }
+      return b.reviews - a.reviews;
+    });
+
+    return withMeta;
+  }, [vendors, search, cuisine, sortBy, userLocation]);
+
+  const mapCenter = userLocation || defaultCenter;
 
   return (
     <MainLayout>
-      {/* Hero Section */}
-      <section className="mb-20">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <h1 className="text-5xl md:text-6xl font-bold text-white mb-6 leading-tight">
-              Délicieux repas
-              <br />
-              <span className="bg-gradient-to-r from-[#FF6B35] to-[#34D399] bg-clip-text text-transparent">
-                livrés jusqu'à vous
+      {/* Hero + Search */}
+      <section className="mb-8">
+        <div className="flex flex-col gap-4">
+          <h1 className="text-3xl md:text-4xl font-bold text-white">
+            Trouvez votre prochain repas
+          </h1>
+          <p className="text-[#A0A0A0]">
+            Découvrez les meilleurs restaurants autour de vous. Commandez en quelques clics,
+            suivez votre livraison en temps réel.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A0A0A0]">
+                <Search size={18} />
               </span>
-            </h1>
-            <p className="text-xl text-[#A0A0A0] mb-8">
-              Cuisine camerounaise faite maison. Commandez maintenant et dégustez l'authenticité.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4 mb-8">
-              <button
-                onClick={() => navigate('/menu')}
-                className="px-8 py-3 bg-gradient-to-r from-[#FF6B35] to-orange-600 text-white font-bold rounded-lg hover:shadow-lg hover:shadow-[#FF6B35]/50 transition"
-              >
-                Voir le menu
-              </button>
-              <button
-                onClick={() => {
-                  const phone = '+237691710289';
-                  window.open(`https://wa.me/${phone}?text=Bonjour%20LunchUp`, '_blank');
-                }}
-                className="px-8 py-3 border-2 border-[#34D399] text-[#34D399] font-bold rounded-lg hover:bg-[#34D399]/10 transition"
-              >
-                Nous contacter
-              </button>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Find food near you"
+                className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#1A1A1A] border border-[#34D399]/40 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#34D399] transition"
+              />
             </div>
-
-            {/* Info */}
-            <div className="space-y-2">
-              <p className="text-[#D1D5DB]">
-                ⏰ <strong>Horaires:</strong> Lundi - Vendredi, 8H - 15H
-              </p>
-              <p className="text-[#D1D5DB]">
-                📞 <strong>Téléphone:</strong> +237 6 91 71 02 89
-              </p>
-            </div>
-          </div>
-
-          {/* Hero Image */}
-          <div className="relative">
-            <img src={flyer} alt="LunchUp Flyer" className="aspect-square rounded-xl object-cover shadow-lg" />
-          </div>
-        </div>
-      </section>
-
-      {/* Services Section */}
-      <section className="mb-20">
-        <h2 className="text-4xl font-bold text-white mb-12 text-center">Nos Avantages</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[
-            { icon: Truck, title: 'Livraison Rapide', desc: 'Sur le campus en moins d\'1h' },
-            { icon: Utensils, title: 'Cuisine Authentique', desc: 'Recettes traditionnelles camerounaises' },
-            { icon: DollarSign, title: 'Prix Étudiant', desc: 'À partir de 1500 FCFA' },
-            { icon: Leaf, title: 'Ingrédients Frais', desc: 'Acheté chaque matin' },
-          ].map((item, idx) => (
-            <div
-              key={idx}
-              className="bg-[#1A1A1A] border border-[#34D399]/20 p-6 rounded-xl hover:border-[#34D399]/50 transition"
-            >
-              <item.icon size={40} className="text-[#FF6B35] mb-4" />
-              <h3 className="text-lg font-bold text-white mb-2">{item.title}</h3>
-              <p className="text-[#A0A0A0]">{item.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Featured Menu */}
-      <section className="mb-20">
-        <div className="flex justify-between items-center mb-12">
-          <h2 className="text-4xl font-bold text-white">Menu de cette semaine</h2>
-          <button
-            onClick={() => navigate('/menu')}
-            className="text-[#FF6B35] hover:text-orange-600 font-bold transition"
-          >
-            Voir tout →
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="text-center text-[#A0A0A0] py-12">
-            Chargement...
-          </div>
-        ) : featuredItems.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {featuredItems.map((item) => (
-              <div
-                key={item._id}
-                className="bg-[#1A1A1A] border border-[#34D399]/20 rounded-xl overflow-hidden hover:border-[#34D399]/50 transition group"
-              >
-                <div className="aspect-video bg-gradient-to-br from-[#FF6B35]/20 to-[#34D399]/20 flex items-center justify-center relative">
-                  <Utensils size={60} className="text-[#FF6B35]" />
-                  <div className="absolute top-2 right-2 bg-[#34D399] text-[#0A0A0A] px-3 py-1 rounded-full text-sm font-bold">
-                    {item.dayOfWeek}
-                  </div>
-                </div>
-                <div className="p-4">
-                  <h3 className="text-lg font-bold text-white mb-2">{item.name}</h3>
-                  <p className="text-[#A0A0A0] text-sm mb-4">
-                    {item.description || 'Plat délicieux avec accompagnements'}
-                  </p>
-                  <div className="flex justify-between items-center">
-                    <span className="text-2xl font-bold text-[#FF6B35]">
-                      {formatCurrency(item.price)}
-                    </span>
-                    <button
-                      onClick={() => handleAddToCart(item)}
-                      className="px-4 py-2 bg-[#FF6B35] text-white rounded-lg hover:bg-orange-600 transition font-bold"
-                    >
-                      Ajouter
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center text-[#A0A0A0] py-12">
-            <Utensils size={80} className="mx-auto text-[#FF6B35] mb-4" />
-            <h3 className="text-xl font-bold text-white mb-2">Menu en préparation</h3>
-            <p className="text-[#A0A0A0] mb-6">
-              Notre menu de la semaine arrive bientôt ! Découvrez nos délicieux plats camerounais.
-            </p>
             <button
-              onClick={() => navigate('/menu')}
-              className="px-6 py-3 bg-[#FF6B35] text-white rounded-lg hover:bg-orange-600 transition font-bold"
+              type="button"
+              onClick={() =>
+                navigate('/vendors')
+              }
+              className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#22c55e] to-[#16a34a] text-white font-semibold shadow-md hover:shadow-lg transition"
             >
-              Voir tous les plats
+              Explorer les vendeurs
             </button>
           </div>
-        )}
+        </div>
       </section>
 
-      {/* Testimonials Section */}
-      <section className="mb-20">
-        <h2 className="text-4xl font-bold text-white mb-12 text-center">Ce que nos clients disent</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            { name: 'Jean K.', rating: 5, text: 'Meilleur rapport qualité-prix sur le campus!' },
-            { name: 'Marie D.', rating: 5, text: 'Livraison super rapide et repas savoureux' },
-            { name: 'Pierre Y.', rating: 5, text: 'J\'ai enfin trouvé une vraie cuisine camerounaise' },
-          ].map((review, idx) => (
-            <div key={idx} className="bg-[#1A1A1A] border border-[#34D399]/20 p-6 rounded-xl">
-              <div className="flex gap-1 mb-4">
-                {Array(review.rating)
-                  .fill(0)
-                  .map((_, i) => (
-                    <Star key={i} size={18} className="fill-[#FF6B35] text-[#FF6B35]" />
-                  ))}
-              </div>
-              <p className="text-[#D1D5DB] mb-4 italic">"{review.text}"</p>
-              <p className="text-[#A0A0A0] font-bold">- {review.name}</p>
-            </div>
+      {/* Categories */}
+      <section className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold text-white">
+            Catégories populaires
+          </h2>
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {(Object.keys(cuisineLabels) as CuisineFilter[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setCuisine(key)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm whitespace-nowrap transition ${
+                cuisine === key
+                  ? 'bg-[#22c55e] border-[#22c55e] text-black font-semibold'
+                  : 'bg-[#111827] border-[#1f2937] text-[#D1D5DB] hover:border-[#374151]'
+              }`}
+            >
+              <UtensilsCrossed size={16} />
+              {cuisineLabels[key]}
+            </button>
           ))}
+        </div>
+      </section>
+
+      {/* Filters + Map/List */}
+      <section className="mb-10">
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Left: filters + list */}
+          <div className="w-full lg:w-[45%] flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-3 justify-between bg-[#020617] border border-[#1f2937] rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-2 text-sm text-[#9ca3af]">
+                <Filter size={16} />
+                <span>Filtres</span>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <select
+                  value={sortBy}
+                  onChange={(e) =>
+                    setSortBy(
+                      e.target.value as 'popularity' | 'fastest' | 'rating',
+                    )
+                  }
+                  className="bg-[#020617] border border-[#374151] text-[#e5e7eb] rounded-full px-3 py-1 focus:outline-none focus:border-[#22c55e]"
+                >
+                  <option value="popularity">Popularité</option>
+                  <option value="fastest">Livraison la plus rapide</option>
+                  <option value="rating">Mieux notés</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+              {loading ? (
+                <div className="text-[#9ca3af] text-sm">
+                  Chargement des vendeurs...
+                </div>
+              ) : filteredVendors.length === 0 ? (
+                <div className="text-[#9ca3af] text-sm">
+                  Aucun vendeur trouvé.
+                </div>
+              ) : (
+                filteredVendors.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => navigate(`/vendors/${v.id}/menu`)}
+                    className="w-full text-left bg-[#020617] border border-[#1f2937] hover:border-[#22c55e] rounded-2xl p-4 flex gap-3 transition"
+                  >
+                    <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-[#22c55e]/20 to-[#0ea5e9]/20 flex items-center justify-center text-2xl text-white flex-shrink-0">
+                      {v.business_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 flex flex-col gap-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="font-semibold text-white truncate">
+                          {v.business_name}
+                        </h3>
+                        <div className="flex items-center gap-1 text-xs text-[#fbbf24]">
+                          <Star size={14} className="fill-[#fbbf24]" />
+                          <span>4.7</span>
+                          <span className="text-[#6b7280]">
+                            (120)
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-[#9ca3af]">
+                        African cuisine • Street food
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-[#9ca3af]">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[#111827]">
+                          <Timer size={12} />
+                          20–30 min
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[#111827]">
+                          <MapPin size={12} />
+                          {v.distanceKm
+                            ? `${v.distanceKm.toFixed(1)} km`
+                            : 'Proche'}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Right: map */}
+          <div className="w-full lg:flex-1 h-[380px] lg:h-[520px] rounded-2xl overflow-hidden border border-[#1f2937] bg-[#020617]">
+            <MapContainer
+              center={mapCenter}
+              zoom={13}
+              style={{ width: '100%', height: '100%' }}
+              scrollWheelZoom
+            >
+              <TileLayer
+                attribution='&copy; OpenStreetMap contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              {filteredVendors
+                .filter(
+                  (v) =>
+                    typeof v.latitude === 'number' &&
+                    typeof v.longitude === 'number',
+                )
+                .map((v) => (
+                  <Marker
+                    key={v.id}
+                    position={[v.latitude!, v.longitude!]}
+                    icon={vendorIcon}
+                  >
+                    <Popup>
+                      <div className="space-y-1">
+                        <div className="font-semibold">
+                          {v.business_name}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          African cuisine • 4.7 ⭐
+                        </div>
+                        <button
+                          type="button"
+                          className="mt-1 text-xs text-green-600 font-semibold"
+                          onClick={() =>
+                            navigate(`/vendors/${v.id}/menu`)
+                          }
+                        >
+                          Voir le menu →
+                        </button>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
+            </MapContainer>
+          </div>
         </div>
       </section>
     </MainLayout>

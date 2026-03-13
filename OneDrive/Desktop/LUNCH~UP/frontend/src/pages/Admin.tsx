@@ -18,7 +18,12 @@ export default function Admin() {
 
   useEffect(() => {
     if (token) {
-      navigate('/admin/dashboard', { replace: true });
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser && currentUser.role === 'vendor') {
+        navigate('/vendor/dashboard', { replace: true });
+      } else {
+        navigate('/admin/dashboard', { replace: true });
+      }
     }
   }, [token, navigate]);
 
@@ -26,12 +31,16 @@ export default function Admin() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await login(formData.email, formData.password);
+      await login({ email: formData.email, password: formData.password, role: 'admin' });
 
       toast.success('Connexion réussie');
       setFormData({ email: '', password: '' });
 
-      // The useEffect will handle the redirect when token is set
+      // if user logged is a vendor, send them to vendor dashboard
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser && currentUser.role === 'vendor') {
+        navigate('/vendor/dashboard');
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.message || error.message || 'Erreur de connexion');
     } finally {
